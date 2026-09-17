@@ -1,0 +1,81 @@
+{
+	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "欢迎"
+			}
+		},
+		{
+			"path": "pages/login/login",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "登录"
+			}
+		},
+		{
+			"path": "pages/register/register",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "注册"
+			}
+		},
+		{
+			"path": "pages/home/home",
+			"style": {
+				"navigationBarTitleText": "主界面",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/dish-list/dish-list",
+			"style": {
+				"navigationBarTitleText": "菜品列表",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/kitchen-list/kitchen-list",
+			"style": {
+				"navigationBarTitleText": "厨房技巧",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/kitchen-detail/kitchen-detail",
+			"style": {
+				"navigationBarTitleText": "技巧详情",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/dish-detail/dish-detail",
+			"style": {
+				"navigationBarTitleText": "菜品详情",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/favorites/favorites",
+			"style": {
+				"navigationBarTitleText": "我的收藏",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/diet-records/diet-records",
+			"style": {
+				"navigationBarTitleText": "饮食记录",
+				"navigationStyle": "custom"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "uni-app",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"uniIdRouter": {}
+}

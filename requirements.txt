@@ -1,0 +1,14 @@
+fastapi==0.141.1
+flagembedding==1.4.2
+openai==3.8.0
+pydantic==2.13.5
+pymilvus==3.0.1
+bcrypt==5.0.0
+SQLAlchemy==2.0.52
+httpx==0.28.1
+langchain==1.4.0
+langchain-openai==1.6.1
+langchain-community==0.4.2
+langchain-milvus==0.4.0
+langchain-core==1.6.2
+langchain-text-splitters==1.1.2

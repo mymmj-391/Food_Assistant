@@ -1,0 +1,8 @@
+__pycache__
+*.pyc
+.env
+milvus_data
+chroma_data
+.venv
+venv
+.git

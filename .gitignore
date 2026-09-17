@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.env
+.env.production
+milvus_data/
+chroma_data/
+models/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.idea/
+.vscode/
