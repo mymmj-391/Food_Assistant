@@ -6,21 +6,21 @@
 				<text>加载中...</text>
 			</view>
 			<view v-else-if="favorites.length === 0" class="empty">
-				<text class="empty-icon">☆</text>
+				<text class="empty-icon">♡</text>
 				<text class="empty-text">暂无收藏</text>
-				<text class="empty-tip">点击菜品卡片上的五角星添加收藏</text>
+				<text class="empty-tip">点击菜品卡片上的心形添加收藏</text>
 			</view>
 			<view v-else class="favorites-list">
 				<view class="favorites-count">
 					<text class="count-text">共 {{ favorites.length }} 条收藏</text>
 				</view>
 				<view
-					v-for="item in favorites"
+					v-for="(item, index) in favorites"
 					:key="item.id"
 					class="favorite-item"
 					@click="goToDish(item)"
 				>
-					<image v-if="item.image" class="item-image" :src="item.image" mode="aspectFill"></image>
+					<image v-if="item.image && isVisible(index)" class="item-image" :src="item.image" mode="aspectFill"></image>
 					<view v-else class="item-image placeholder">
 						<text class="placeholder-text">🍽</text>
 					</view>
@@ -30,8 +30,8 @@
 						<text class="item-time">{{ formatTime(item.created_at) }}</text>
 					</view>
 					<view class="item-action" @click.stop="removeFavorite(item)">
-						<text class="star-filled">★</text>
-					</view>
+					<text class="star-filled">♥</text>
+				</view>
 				</view>
 			</view>
 		</view>
@@ -43,7 +43,9 @@
 	import AppLayout from '../../components/AppLayout.vue'
 	import CursorTrail from '../../components/CursorTrail.vue'
 	import { getFavorites, removeFavorite as removeFavoriteApi } from '../../api/favorites.js'
+	import { useLazyLoad } from '../../utils/lazyLoad'
 
+	const { isVisible, observe } = useLazyLoad()
 	const layout = ref(null)
 	const favorites = ref([])
 	const loading = ref(false)
@@ -65,6 +67,7 @@
 		try {
 			const res = await getFavorites()
 			favorites.value = res
+			observe('.favorites-list .favorite-item', favorites.value.length)
 		} catch (e) {
 			uni.showToast({ title: '加载失败', icon: 'none' })
 		} finally {
@@ -82,6 +85,8 @@
 	try {
 		await removeFavoriteApi({ dish_name: item.dish_name })
 		favorites.value = favorites.value.filter(f => f.id !== item.id)
+			// 列表收缩后索引会错位，需要重新按新顺序监听
+			observe('.favorites-list .favorite-item', favorites.value.length)
 			uni.showToast({ title: '已取消收藏', icon: 'none' })
 		} catch (e) {
 			uni.showToast({ title: '操作失败', icon: 'none' })

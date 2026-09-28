@@ -42,7 +42,7 @@
 								<text class="dish-tag placeholder-tag">#{{ dishTag(dish) }}</text>
 							</view>
 
-							<text class="dish-fav">♡</text>
+							<text class="dish-fav" :class="{ 'fav-active': dish.isFavorite }" @click.stop="toggleFavorite(dish)">{{ dish.isFavorite ? '♥' : '♡' }}</text>
 						</view>
 
 						<view class="dish-info">
@@ -61,11 +61,13 @@ import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import AppLayout from '../../components/AppLayout.vue'
 import CursorTrail from '../../components/CursorTrail.vue'
 import { getCategories, getDishesByCategory } from '../../api/dish'
+import { addFavorite, removeFavorite, getFavorites } from '../../api/favorites'
 import { cleanSummary, summaryTag } from '../../utils/dishText'
 
 const layout = ref(null)
 const featuredDishes = ref([])
 const featuredSeed = ref(null)
+const favoriteLoading = ref(false)
 
 const dishTag = (dish) => summaryTag(dish.summary, dish.categoryName)
 
@@ -136,8 +138,44 @@ async function loadFeaturedDishes() {
 		featuredSeed.value = seed
 		featuredDishes.value = pickRandom(allDishes, 4, seed)
 		markRefreshed()
+		checkFavorites()
 	} catch (e) {
 		console.error('加载今日推荐失败:', e)
+	}
+}
+
+const checkFavorites = async () => {
+	try {
+		const favorites = await getFavorites()
+		const favSet = new Set(favorites.map(f => f.dish_name))
+		featuredDishes.value.forEach(dish => {
+			dish.isFavorite = favSet.has(dish.name)
+		})
+	} catch (e) {}
+}
+
+const toggleFavorite = async (dish) => {
+	if (favoriteLoading.value) return
+	favoriteLoading.value = true
+	try {
+		if (dish.isFavorite) {
+			await removeFavorite({ dish_name: dish.name })
+			dish.isFavorite = false
+			uni.showToast({ title: '已取消收藏', icon: 'none' })
+		} else {
+			await addFavorite({
+				dish_name: dish.name,
+				category_id: dish.categoryId,
+				category_name: dish.categoryName,
+				image: dish.image || ''
+			})
+			dish.isFavorite = true
+			uni.showToast({ title: '已添加收藏', icon: 'none' })
+		}
+	} catch (e) {
+		uni.showToast({ title: '操作失败', icon: 'none' })
+	} finally {
+		favoriteLoading.value = false
 	}
 }
 
@@ -421,6 +459,15 @@ onUnmounted(() => {
 	background-color: rgba(255, 255, 255, 0.85);
 	border-radius: 50%;
 	box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.12);
+	transition: transform 0.3s ease, color 0.3s ease;
+}
+
+.dish-fav:active {
+	transform: scale(0.9);
+}
+
+.fav-active {
+	color: #e07a2c;
 }
 
 .dish-info {
@@ -456,14 +503,11 @@ onUnmounted(() => {
 	overflow: hidden;
 }
 
-
 </style>
 
 <style>
-/* Google Fonts — Artistic Chinese & Latin typefaces */
 @import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@200;400;600&family=ZCOOL+XiaoWei&family=Cormorant+Garamond:wght@300;400&display=swap');
 
-/* Global bright warm background */
 .main-content {
 	background: linear-gradient(180deg, #fdf8f0 0%, #fef5eb 30%, #f5e6d3 100%) !important;
 }
@@ -510,7 +554,6 @@ onUnmounted(() => {
 :deep(.back-btn:active) { background: linear-gradient(135deg, #fde8d0, #f5d5b8) !important; }
 :deep(.back-icon) { color: #d4804a !important; }
 
-/* Override sidebar to warm tones — match preview details */
 :deep(.sidebar-drawer) {
 	background-color: #fffaf5 !important;
 	box-shadow: 4rpx 0 24rpx rgba(140, 90, 50, 0.1) !important;

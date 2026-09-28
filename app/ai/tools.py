@@ -1,14 +1,22 @@
 import json
+import time
+import logging
+import os
+from datetime import datetime
 import httpx
 from langchain_core.tools import tool
-from app.core.settings import (
-    WEATHER_API_KEY,
-    WEATHER_API_URL,
-    WEATHER_CITY_URL,
-    AMAP_API_KEY,
-    AMAP_IP_URL,
-)
+from app.core.settings import AMAP_API_KEY, AMAP_IP_URL
+from app.core.context import get_client_ip
 from app.services.dish_service import get_dish_detail, get_category_list, CATEGORY_MAP
+
+_tool_logger = logging.getLogger("tool_call")
+_tool_logger.setLevel(logging.INFO)
+_log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
+os.makedirs(_log_dir, exist_ok=True)
+_handler = logging.FileHandler(os.path.join(_log_dir, "tool_calls.log"), encoding="utf-8")
+_handler.setFormatter(logging.Formatter("%(message)s"))
+_tool_logger.addHandler(_handler)
+_tool_logger.propagate = False
 
 
 @tool
@@ -18,176 +26,115 @@ async def get_weather(city: str) -> str:
     Args:
         city: 城市名称，如'北京'、'上海'、'广州'等
     """
-    errors = []
+    if not AMAP_API_KEY:
+        return json.dumps({
+            "error": "未配置高德 API Key",
+            "suggestion": f"您可以告诉我{city}的天气情况，我可以为您推荐适合的美食"
+        }, ensure_ascii=False)
 
-    # 方案1：使用和风天气API
-    if WEATHER_API_KEY:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                city_resp = await client.get(
-                    WEATHER_CITY_URL,
-                    params={"location": city, "key": WEATHER_API_KEY}
-                )
-                city_data = city_resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            geo_resp = await client.get(
+                "https://restapi.amap.com/v3/geocode/geo",
+                params={"address": city, "key": AMAP_API_KEY, "output": "json"}
+            )
+            geo_data = geo_resp.json()
+            if geo_data.get("status") != "1" or not geo_data.get("geocodes"):
+                return json.dumps({
+                    "error": f"未找到城市 {city}",
+                    "suggestion": "请确认城市名称是否正确"
+                }, ensure_ascii=False)
 
-                if city_data.get("code") == "200" and city_data.get("location"):
-                    location_id = city_data["location"][0]["id"]
+            adcode = geo_data["geocodes"][0].get("adcode", "")
 
-                    weather_resp = await client.get(
-                        WEATHER_API_URL,
-                        params={"location": location_id, "key": WEATHER_API_KEY}
-                    )
-                    weather_data = weather_resp.json()
-
-                    if weather_data.get("code") == "200":
-                        now = weather_data["now"]
-                        result = {
-                            "city": city,
-                            "temperature": now.get("temp", "未知"),
-                            "feels_like": now.get("feelsLike", "未知"),
-                            "weather": now.get("text", "未知"),
-                            "humidity": now.get("humidity", "未知"),
-                            "wind": f"{now.get('windDir', '')} {now.get('windScale', '')}级",
-                            "update_time": weather_data.get("updateTime", ""),
-                            "source": "qweather",
-                        }
-                        return json.dumps(result, ensure_ascii=False)
-                    else:
-                        errors.append(f"和风天气: {weather_data.get('message', '未知错误')}")
-                else:
-                    errors.append(f"和风天气: 未找到城市 {city}")
-        except Exception as e:
-            errors.append(f"和风天气: {type(e).__name__}")
-
-    # 方案2：使用高德天气API（如果配置了高德Key）
-    if AMAP_API_KEY:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                # 先获取城市adcode
-                geo_resp = await client.get(
-                    "https://restapi.amap.com/v3/geocode/geo",
-                    params={"address": city, "key": AMAP_API_KEY, "output": "json"}
-                )
-                geo_data = geo_resp.json()
-                if geo_data.get("status") == "1" and geo_data.get("geocodes"):
-                    adcode = geo_data["geocodes"][0].get("adcode", "")
-
-                    weather_resp = await client.get(
-                        "https://restapi.amap.com/v3/weather/weatherInfo",
-                        params={"city": adcode, "key": AMAP_API_KEY, "output": "json", "extensions": "base"}
-                    )
-                    weather_data = weather_resp.json()
-                    if weather_data.get("status") == "1" and weather_data.get("lives"):
-                        live = weather_data["lives"][0]
-                        result = {
-                            "city": live.get("city", city),
-                            "temperature": live.get("temperature", "未知"),
-                            "weather": live.get("weather", "未知"),
-                            "humidity": live.get("humidity", "未知"),
-                            "wind": f"{live.get('winddirection', '')}风 {live.get('windpower', '')}级",
-                            "source": "amap",
-                        }
-                        return json.dumps(result, ensure_ascii=False)
-                    else:
-                        errors.append(f"高德天气: 获取失败")
-                else:
-                    errors.append(f"高德天气: 未找到城市 {city}")
-        except Exception as e:
-            errors.append(f"高德天气: {type(e).__name__}")
-
-    # 所有方案都失败
-    return json.dumps({
-        "error": "暂时无法获取天气信息",
-        "detail": "; ".join(errors),
-        "suggestion": f"您可以告诉我{city}的天气情况，我可以为您推荐适合的美食"
-    }, ensure_ascii=False)
+            weather_resp = await client.get(
+                "https://restapi.amap.com/v3/weather/weatherInfo",
+                params={"city": adcode, "key": AMAP_API_KEY, "output": "json", "extensions": "base"}
+            )
+            weather_data = weather_resp.json()
+            if weather_data.get("status") == "1" and weather_data.get("lives"):
+                live = weather_data["lives"][0]
+                result = {
+                    "city": live.get("city", city),
+                    "temperature": live.get("temperature", "未知"),
+                    "weather": live.get("weather", "未知"),
+                    "humidity": live.get("humidity", "未知"),
+                    "wind": f"{live.get('winddirection', '')}风 {live.get('windpower', '')}级",
+                    "source": "amap",
+                }
+                return json.dumps(result, ensure_ascii=False)
+            else:
+                return json.dumps({
+                    "error": "获取天气失败",
+                    "suggestion": f"您可以告诉我{city}的天气情况，我可以为您推荐适合的美食"
+                }, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({
+            "error": f"获取天气异常: {type(e).__name__}",
+            "suggestion": f"您可以告诉我{city}的天气情况，我可以为您推荐适合的美食"
+        }, ensure_ascii=False)
 
 
 @tool
 async def get_location() -> str:
     """获取用户当前的地理位置信息，包括城市、经纬度等。当用户询问当前位置、附近美食、本地天气时使用。"""
-    errors = []
+    user_ip = get_client_ip()
 
-    # 方案1：优先使用高德地图（国内精度高，免费额度约3万次/天）
-    # 注意：必须使用"Web服务"类型的API Key，"Web端(JS API"类型不支持IP定位
-    if AMAP_API_KEY:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(AMAP_IP_URL, params={
-                    "key": AMAP_API_KEY,
-                    "output": "json",
-                })
-                data = resp.json()
-                if data.get("status") == "1":
-                    result = {
-                        "province": data.get("province", "未知"),
-                        "city": data.get("city", "未知"),
-                        "adcode": data.get("adcode", ""),
-                        "rectangle": data.get("rectangle", ""),
-                        "source": "amap",
-                    }
-                    return json.dumps(result, ensure_ascii=False)
-                else:
-                    error_info = data.get("info", "未知错误")
-                    if data.get("infocode") == "10009":
-                        error_info = "API Key类型错误，请使用'Web服务'类型的Key（非Web端JS API）"
-                    errors.append(f"高德地图: {error_info}")
-        except Exception as e:
-            errors.append(f"高德地图: {type(e).__name__}")
+    if not AMAP_API_KEY:
+        return json.dumps({
+            "error": "未配置高德 API Key",
+            "suggestion": "您可以直接告诉我您所在的城市，我可以为您推荐当地美食"
+        }, ensure_ascii=False)
 
-    # 方案2：使用太平洋网络IP API（国内可用，无需密钥）
+    if not user_ip:
+        return json.dumps({
+            "error": "无法获取用户 IP",
+            "suggestion": "您可以直接告诉我您所在的城市，我可以为您推荐当地美食"
+        }, ensure_ascii=False)
+
+    # 内网/回环 IP 高德无法定位，不传 ip 参数让高德使用请求方出口 IP
+    is_private_ip = (
+        user_ip in ("127.0.0.1", "0:0:0:0:0:0:0:1", "::1", "")
+        or user_ip.startswith("192.168.")
+        or user_ip.startswith("10.")
+        or user_ip.startswith("172.16.") or user_ip.startswith("172.17.")
+        or user_ip.startswith("172.18.") or user_ip.startswith("172.19.")
+        or user_ip.startswith("172.2") or user_ip.startswith("172.30.")
+        or user_ip.startswith("172.31.")
+    )
+
     try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            resp = await client.get(
-                "https://whois.pconline.com.cn/ipJson.jsp?json=true",
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-            )
-            resp.encoding = resp.apparent_encoding or "utf-8"
+        async with httpx.AsyncClient(timeout=10) as client:
+            params = {"key": AMAP_API_KEY, "output": "json"}
+            if not is_private_ip:
+                params["ip"] = user_ip
+            resp = await client.get(AMAP_IP_URL, params=params)
             data = resp.json()
-            if data.get("ip"):
+            if data.get("status") == "1":
                 result = {
-                    "country": "中国",
-                    "province": data.get("pro", "未知"),
+                    "province": data.get("province", "未知"),
                     "city": data.get("city", "未知"),
-                    "ip": data.get("ip", "未知"),
-                    "source": "pconline",
+                    "adcode": data.get("adcode", ""),
+                    "rectangle": data.get("rectangle", ""),
+                    "ip": user_ip if not is_private_ip else "局域网/服务器出口",
+                    "source": "amap",
                 }
                 return json.dumps(result, ensure_ascii=False)
             else:
-                errors.append("太平洋IP: 返回错误")
+                error_info = data.get("info", "未知错误")
+                if data.get("infocode") == "10009":
+                    error_info = "API Key类型错误，请使用'Web服务'类型的Key（非Web端JS API）"
+                return json.dumps({
+                    "error": f"高德定位失败: {error_info}",
+                    "ip": user_ip,
+                    "suggestion": "您可以直接告诉我您所在的城市，我可以为您推荐当地美食"
+                }, ensure_ascii=False)
     except Exception as e:
-        errors.append(f"太平洋IP: {type(e).__name__}")
-
-    # 方案3：使用 IP-API（需要HTTPS，45次/分钟）
-    try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            resp = await client.get("https://ip-api.com/json/", headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
-            data = resp.json()
-
-            if data.get("status") == "success":
-                result = {
-                    "country": data.get("country", "未知"),
-                    "region": data.get("regionName", "未知"),
-                    "city": data.get("city", "未知"),
-                    "latitude": data.get("lat", 0),
-                    "longitude": data.get("lon", 0),
-                    "ip": data.get("query", "未知"),
-                    "source": "ip-api",
-                }
-                return json.dumps(result, ensure_ascii=False)
-            else:
-                errors.append(f"IP-API: {data.get('message', '未知错误')}")
-    except Exception as e:
-        errors.append(f"IP-API: {type(e).__name__}")
-
-    # 所有方案都失败，返回友好提示
-    return json.dumps({
-        "error": "暂时无法获取位置信息",
-        "detail": "; ".join(errors),
-        "suggestion": "您可以直接告诉我您所在的城市，我可以为您推荐当地美食"
-    }, ensure_ascii=False)
+        return json.dumps({
+            "error": f"定位异常: {type(e).__name__}",
+            "ip": user_ip,
+            "suggestion": "您可以直接告诉我您所在的城市，我可以为您推荐当地美食"
+        }, ensure_ascii=False)
 
 
 @tool
@@ -260,12 +207,42 @@ ALL_TOOLS = [get_weather, get_location, get_time, get_dish_info, list_dish_categ
 
 
 async def execute_tool(tool_name: str, arguments: dict) -> dict:
-    """执行指定工具"""
+    """执行指定工具，并记录结构化调用日志"""
+    start = time.time()
+    success = True
+    error_msg = None
+
     tool_map = {t.name: t for t in ALL_TOOLS}
     func = tool_map.get(tool_name)
     if not func:
-        return {"error": f"未知工具: {tool_name}"}
-    result = await func.ainvoke(arguments)
-    if isinstance(result, str):
-        return json.loads(result)
+        success = False
+        error_msg = f"未知工具: {tool_name}"
+        result = {"error": error_msg}
+    else:
+        try:
+            raw = await func.ainvoke(arguments)
+            result = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(result, dict) and "error" in result:
+                success = False
+                error_msg = result["error"]
+        except Exception as e:
+            success = False
+            error_msg = str(e)
+            result = {"error": error_msg}
+
+    duration_ms = round((time.time() - start) * 1000, 1)
+
+    log_entry = json.dumps({
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "tool": tool_name,
+        "arguments": arguments,
+        "duration_ms": duration_ms,
+        "success": success,
+        "error": error_msg,
+    }, ensure_ascii=False)
+    _tool_logger.info(log_entry)
+
+    status = "✓" if success else "✗"
+    print(f"[TOOL] {status} {tool_name}  {duration_ms}ms  {arguments}")
+
     return result

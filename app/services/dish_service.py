@@ -64,7 +64,8 @@ def get_dish_list(category_id: str) -> list:
             image = None
             for img_file in sorted(item.iterdir()):
                 if img_file.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
-                    image = f"{BASE_URL}/dishes/image/{category_id}/{name}/{img_file.name}"
+                    version = int(img_file.stat().st_mtime)
+                    image = f"{BASE_URL}/dishes/image/{category_id}/{name}/{img_file.name}?v={version}"
                     break
             dishes.append({
                 "id": name,
@@ -109,7 +110,8 @@ def get_dish_images(category_id: str, dish_name: str) -> list:
     if dish_dir.exists() and dish_dir.is_dir():
         for img_file in sorted(dish_dir.iterdir()):
             if img_file.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
-                images.append(f"{BASE_URL}/dishes/image/{category_id}/{dish_name}/{img_file.name}")
+                version = int(img_file.stat().st_mtime)
+                images.append(f"{BASE_URL}/dishes/image/{category_id}/{dish_name}/{img_file.name}?v={version}")
 
     return images
 

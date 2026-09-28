@@ -84,6 +84,9 @@ def extract_dish_names(search_results: list) -> list:
     return dish_links
 
 
+MAX_HISTORY_MESSAGES = 20
+
+
 async def rag_chat(query: str, top_k: int = 5, history_prompt: str = "") -> ChatResponse:
     try:
         print(f"[RAG] 搜索知识库: query={query}, top_k={top_k}")

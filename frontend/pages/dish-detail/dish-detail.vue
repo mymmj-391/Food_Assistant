@@ -13,10 +13,10 @@
 			<view v-else class="detail-container">
 				<view class="dish-header">
 					<text class="dish-name">{{ dish.name }}</text>
-					<view v-if="images.length" class="image-swiper" :style="{ height: imageHeight + 'rpx' }">
-						<swiper :indicator-dots="images.length > 1" :autoplay="images.length > 1" :interval="3000" :duration="500" class="swiper">
+					<view v-if="images.length" class="image-swiper">
+						<swiper :indicator-dots="images.length > 1" :autoplay="images.length > 1" :interval="3000" :duration="500" class="swiper" :style="{ height: imageHeight + 'rpx' }">
 							<swiper-item v-for="(img, idx) in images" :key="idx">
-								<image class="swiper-image" :src="img" mode="aspectFill" @error="onImageError(idx)" @load="onImageLoad($event, idx)"></image>
+								<image class="swiper-image" :src="img" mode="aspectFit" @error="onImageError(idx)" @load="onImageLoad($event, idx)"></image>
 							</swiper-item>
 						</swiper>
 					</view>
@@ -38,17 +38,29 @@
 
 					<view class="tab-content">
 						<view v-if="activeTab === 'ingredients'" class="tab-panel">
-							<view v-if="parsed.ingredients" class="content-card">
-								<view class="section-list">
-									<view v-for="(block, idx) in ingredientBlocks" :key="idx" class="block-item">
-										<view v-if="block.type === 'text'" class="block-text">{{ block.text }}</view>
-										<view v-else-if="block.type === 'list'" class="block-list">
-											<view v-for="(item, i) in block.items" :key="i" class="list-row">
-												<text class="list-bullet"></text>
-												<text class="list-text">{{ item }}</text>
-											</view>
+							<view v-if="ingredients.main.length || ingredients.seasoning.length" class="ingredients-wrapper">
+								<view v-if="ingredients.main.length" class="ingredient-section">
+									<view class="section-header">
+										<text class="section-icon">🥩</text>
+										<text class="section-title">主料</text>
+									</view>
+									<view class="card-grid">
+										<view v-for="(item, idx) in ingredients.main" :key="idx" class="ingredient-card main-card">
+											<text class="ingredient-name">{{ item.name }}</text>
+											<text class="ingredient-amount">{{ item.amount }}</text>
 										</view>
-										<view v-else-if="block.type === 'subtitle'" class="block-subtitle">{{ block.text }}</view>
+									</view>
+								</view>
+								<view v-if="ingredients.seasoning.length" class="ingredient-section">
+									<view class="section-header">
+										<text class="section-icon">🧂</text>
+										<text class="section-title">调料</text>
+									</view>
+									<view class="card-grid seasoning-grid">
+										<view v-for="(item, idx) in ingredients.seasoning" :key="idx" class="ingredient-card seasoning-card">
+											<text class="ingredient-name">{{ item.name }}</text>
+											<text class="ingredient-amount">{{ item.amount }}</text>
+										</view>
 									</view>
 								</view>
 							</view>
@@ -58,17 +70,16 @@
 						</view>
 
 						<view v-if="activeTab === 'steps'" class="tab-panel">
-							<view v-if="stepBlocks.length" class="content-card">
-								<view class="step-list">
-									<view v-for="(block, idx) in stepBlocks" :key="idx" class="step-block">
-										<view v-if="block.type === 'text'" class="step-text">{{ block.text }}</view>
-										<view v-else-if="block.type === 'list'" class="step-ordered-list">
-											<view v-for="(item, i) in block.items" :key="i" class="step-item">
-												<view class="step-number">{{ i + 1 }}</view>
-												<text class="step-item-text">{{ item }}</text>
-											</view>
-										</view>
-										<view v-else-if="block.type === 'subtitle'" class="step-subtitle">{{ block.text }}</view>
+							<view v-if="stepsList.length" class="steps-wrapper">
+								<view class="steps-header-bar">
+									<text class="steps-count">共 {{ stepsList.length }} 步</text>
+								</view>
+								<view v-for="(step, idx) in stepsList" :key="idx" class="step-row">
+									<view class="step-badge">
+										<text class="step-badge-text">{{ idx + 1 }}</text>
+									</view>
+									<view class="step-content-card">
+										<text class="step-content-text">{{ step.text }}</text>
 									</view>
 								</view>
 							</view>
@@ -78,21 +89,18 @@
 						</view>
 
 						<view v-if="activeTab === 'tips'" class="tab-panel">
-							<view v-if="parsed.tips" class="content-card tip-card">
-								<view class="tip-header">
-									<text class="tip-icon">💡</text>
-									<text class="tip-title">小贴士</text>
-								</view>
-								<view class="section-list">
-									<view v-for="(block, idx) in tipBlocks" :key="idx" class="block-item">
-										<view v-if="block.type === 'text'" class="block-text">{{ block.text }}</view>
-										<view v-else-if="block.type === 'list'" class="block-list">
-											<view v-for="(item, i) in block.items" :key="i" class="list-row">
-												<text class="list-bullet tip-bullet"></text>
-												<text class="list-text">{{ item }}</text>
-											</view>
+							<view v-if="tipsList.length" class="tips-wrapper">
+								<view class="tips-card-container">
+									<view class="tips-header">
+										<text class="tips-icon">💡</text>
+										<text class="tips-title">小贴士</text>
+									</view>
+									<view class="tips-divider"></view>
+									<view class="tips-list">
+										<view v-for="(tip, idx) in tipsList" :key="idx" class="tip-row">
+											<view class="tip-bullet"></view>
+											<text class="tip-text">{{ tip }}</text>
 										</view>
-										<view v-else-if="block.type === 'subtitle'" class="block-subtitle">{{ block.text }}</view>
 									</view>
 								</view>
 							</view>
@@ -114,7 +122,7 @@ import AppLayout from '../../components/AppLayout.vue'
 import CursorTrail from '../../components/CursorTrail.vue'
 import { getDishDetail, getDishImages } from '../../api/dish'
 import { addDietRecord } from '../../api/favorites'
-import { parseDishContent, mdToBlocks } from '../../utils/mdParser'
+import { parseIngredients, parseSteps, parseTips } from '../../utils/mdParser'
 
 const layout = ref(null)
 const dish = ref(null)
@@ -129,20 +137,32 @@ const tabs = [
 	{ key: 'tips', label: '贴士', icon: '💡' }
 ]
 
-const parsed = computed(() => {
-	if (!dish.value?.content) return { ingredients: '', steps: '', tips: '' }
-	return parseDishContent(dish.value.content)
+const ingredients = computed(() => {
+	if (!dish.value?.content) return { main: [], seasoning: [] }
+	return parseIngredients(dish.value.content)
 })
 
-const ingredientBlocks = computed(() => mdToBlocks(parsed.value.ingredients))
-const stepBlocks = computed(() => mdToBlocks(parsed.value.steps))
-const tipBlocks = computed(() => mdToBlocks(parsed.value.tips))
+const stepsList = computed(() => {
+	if (!dish.value?.content) return []
+	return parseSteps(dish.value.content)
+})
+
+const tipsList = computed(() => {
+	if (!dish.value?.content) return []
+	return parseTips(dish.value.content)
+})
 
 const onImageLoad = (e, idx) => {
 	if (idx === 0) {
 		const { width, height } = e.detail
 		if (width > 0 && height > 0) {
-			imageHeight.value = Math.min(Math.max(height / width * 600, 300), 800)
+			const systemInfo = uni.getSystemInfoSync()
+			const containerWidth = systemInfo.windowWidth - 80
+			const ratio = height / width
+			let calcHeight = containerWidth * ratio
+			const minH = 300
+			const maxH = 700
+			imageHeight.value = Math.round(Math.max(minH, Math.min(maxH, calcHeight)))
 		}
 	}
 }
@@ -243,16 +263,22 @@ const fetchDishDetail = async (category, dishName) => {
 .image-swiper {
 	width: 100%;
 	border-radius: 24rpx;
+	border: 6rpx solid #fdf8f0;
 	overflow: hidden;
-	box-shadow: 0 8rpx 32rpx rgba(140, 90, 50, 0.12);
+	box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.08);
+	background: #fef5eb;
 }
 .swiper {
 	width: 100%;
-	height: 100%;
 }
 .swiper-image {
 	width: 100%;
 	height: 100%;
+	object-fit: contain;
+	border-radius: 20rpx;
+	border: 4rpx solid #fef5eb;
+	background: #fdf8f0;
+	box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.06);
 }
 
 .tab-container {
@@ -261,6 +287,7 @@ const fetchDishDetail = async (category, dishName) => {
 	box-shadow: 0 8rpx 32rpx rgba(140, 90, 50, 0.08);
 	overflow: hidden;
 	border: 1px solid rgba(224, 122, 44, 0.1);
+	margin-top: 30rpx;
 }
 
 .tab-header {
@@ -319,159 +346,209 @@ const fetchDishDetail = async (category, dishName) => {
 	padding: 30rpx;
 }
 
-.content-card {
-	background: #fffdf9;
-	border-radius: 16rpx;
-	padding: 30rpx;
-	border: 1px solid rgba(224, 122, 44, 0.06);
-}
-
-.section-list {
+/* ========== 食材区域 ========== */
+.ingredients-wrapper {
 	display: flex;
 	flex-direction: column;
-	gap: 20rpx;
+	gap: 32rpx;
 }
 
-.block-item {
-	line-height: 1.8;
-}
-
-.block-text {
-	font-size: 28rpx;
-	color: #3d2415;
-	font-family: 'Noto Serif SC', 'Songti SC', serif;
-	line-height: 1.8;
-	white-space: pre-wrap;
-	word-break: break-word;
-}
-
-.block-subtitle {
-	font-size: 30rpx;
-	font-weight: bold;
-	color: #4a2c1a;
-	margin-top: 16rpx;
-	margin-bottom: 8rpx;
-	font-family: 'Noto Serif SC', 'Songti SC', serif;
-}
-
-.block-list {
-	display: flex;
-	flex-direction: column;
-	gap: 12rpx;
-}
-
-.list-row {
-	display: flex;
-	align-items: flex-start;
-	gap: 12rpx;
-}
-
-.list-bullet {
-	width: 8rpx;
-	height: 8rpx;
-	border-radius: 50%;
-	background-color: #e07a2c;
-	margin-top: 18rpx;
-	flex-shrink: 0;
-}
-
-.list-text {
-	flex: 1;
-	font-size: 28rpx;
-	color: #3d2415;
-	font-family: 'Noto Serif SC', 'Songti SC', serif;
-	line-height: 1.7;
-}
-
-.tip-bullet {
-	background-color: #f5a623;
-}
-
-.step-list {
-	display: flex;
-	flex-direction: column;
-	gap: 24rpx;
-}
-
-.step-block {
-	line-height: 1.8;
-}
-
-.step-text {
-	font-size: 28rpx;
-	color: #3d2415;
-	font-family: 'Noto Serif SC', 'Songti SC', serif;
-	white-space: pre-wrap;
-	word-break: break-word;
-}
-
-.step-subtitle {
-	font-size: 30rpx;
-	font-weight: bold;
-	color: #4a2c1a;
-	margin-top: 16rpx;
-	margin-bottom: 8rpx;
-	font-family: 'Noto Serif SC', 'Songti SC', serif;
-}
-
-.step-ordered-list {
+.ingredient-section {
 	display: flex;
 	flex-direction: column;
 	gap: 16rpx;
 }
 
-.step-item {
+.section-header {
 	display: flex;
-	align-items: flex-start;
-	gap: 16rpx;
-}
-
-.step-number {
-	width: 44rpx;
-	height: 44rpx;
-	border-radius: 50%;
-	background: linear-gradient(135deg, #e07a2c, #f5a623);
-	color: #fff;
-	font-size: 24rpx;
-	font-weight: bold;
-	display: flex;
-	justify-content: center;
 	align-items: center;
-	flex-shrink: 0;
-	margin-top: 4rpx;
+	gap: 8rpx;
+	margin-bottom: 8rpx;
 }
 
-.step-item-text {
-	flex: 1;
+.section-icon {
 	font-size: 28rpx;
-	color: #3d2415;
-	font-family: 'Noto Serif SC', 'Songti SC', serif;
-	line-height: 1.7;
 }
 
-.tip-card {
-	background: linear-gradient(135deg, #fff9f0 0%, #fef5eb 100%);
-	border-color: rgba(245, 166, 35, 0.2);
-}
-
-.tip-header {
-	display: flex;
-	align-items: center;
-	gap: 12rpx;
-	margin-bottom: 20rpx;
-	padding-bottom: 16rpx;
-	border-bottom: 1rpx dashed rgba(245, 166, 35, 0.3);
-}
-.tip-icon {
-	font-size: 36rpx;
-}
-.tip-title {
-	font-size: 30rpx;
+.section-title {
+	font-size: 28rpx;
 	font-weight: bold;
 	color: #e07a2c;
 	font-family: 'Noto Serif SC', 'Songti SC', serif;
 }
 
+.card-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16rpx;
+}
+
+.seasoning-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12rpx;
+}
+
+.ingredient-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16rpx 20rpx;
+	border-radius: 12rpx;
+	min-width: 140rpx;
+	flex: none;
+	max-width: 100%;
+}
+
+.main-card {
+	background: #fff3e6;
+}
+
+.seasoning-card {
+	background: #fafafa;
+	flex-basis: auto;
+	flex: none;
+	min-width: 0;
+}
+
+.ingredient-name {
+	font-size: 26rpx;
+	color: #4a2c1a;
+	font-weight: 600;
+	font-family: 'Noto Serif SC', 'Songti SC', serif;
+	flex: 1;
+}
+
+.ingredient-amount {
+	font-size: 24rpx;
+	color: #b8860b;
+	font-family: 'Noto Serif SC', 'Songti SC', serif;
+	margin-left: 12rpx;
+}
+
+/* ========== 步骤区域 ========== */
+.steps-wrapper {
+	display: flex;
+	flex-direction: column;
+	gap: 20rpx;
+}
+
+.steps-header-bar {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.steps-count {
+	font-size: 24rpx;
+	color: #8b7355;
+	font-family: 'Noto Serif SC', 'Songti SC', serif;
+}
+
+.step-row {
+	display: flex;
+	gap: 20rpx;
+	align-items: flex-start;
+}
+
+.step-badge {
+	width: 48rpx;
+	height: 48rpx;
+	border-radius: 50%;
+	background: linear-gradient(135deg, #e07a2c 0%, #f5a623 100%);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+.step-badge-text {
+	font-size: 22rpx;
+	color: #fff;
+	font-weight: bold;
+}
+
+.step-content-card {
+	flex: 1;
+	background: #fffdf9;
+	border-radius: 12rpx;
+	padding: 20rpx 24rpx;
+	border: 1px solid rgba(224, 122, 44, 0.06);
+}
+
+.step-content-text {
+	font-size: 26rpx;
+	color: #3d2415;
+	font-family: 'Noto Serif SC', 'Songti SC', serif;
+	line-height: 1.7;
+}
+
+/* ========== 贴士区域 ========== */
+.tips-wrapper {
+	display: flex;
+	flex-direction: column;
+}
+
+.tips-card-container {
+	background: linear-gradient(135deg, #fff9f0 0%, #fef5eb 100%);
+	border-radius: 16rpx;
+	border: 1px solid rgba(245, 166, 35, 0.15);
+	padding: 28rpx;
+}
+
+.tips-header {
+	display: flex;
+	align-items: center;
+	gap: 12rpx;
+	margin-bottom: 16rpx;
+}
+
+.tips-icon {
+	font-size: 32rpx;
+}
+
+.tips-title {
+	font-size: 28rpx;
+	font-weight: bold;
+	color: #e07a2c;
+	font-family: 'Noto Serif SC', 'Songti SC', serif;
+}
+
+.tips-divider {
+	height: 1rpx;
+	border-top: 1rpx dashed rgba(245, 166, 35, 0.25);
+	margin-bottom: 20rpx;
+}
+
+.tips-list {
+	display: flex;
+	flex-direction: column;
+	gap: 16rpx;
+}
+
+.tip-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 14rpx;
+}
+
+.tip-bullet {
+	width: 10rpx;
+	height: 10rpx;
+	border-radius: 50%;
+	background: #f5a623;
+	margin-top: 14rpx;
+	flex-shrink: 0;
+}
+
+.tip-text {
+	flex: 1;
+	font-size: 26rpx;
+	color: #3d2415;
+	font-family: 'Noto Serif SC', 'Songti SC', serif;
+	line-height: 1.7;
+}
+
+/* ========== 通用 ========== */
 .empty-panel {
 	display: flex;
 	justify-content: center;

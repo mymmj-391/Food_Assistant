@@ -4,6 +4,8 @@ from app.models.chat import ChatSessionModel, ChatMessageModel
 from app.core.database import async_session
 
 MAX_HISTORY_MESSAGES = 20
+COMPRESS_THRESHOLD = 12
+KEEP_RECENT = 4
 
 
 async def get_or_create_session(session_id: str | None, user_id: str) -> str:
@@ -83,14 +85,44 @@ async def session_belongs_to_user(session_id: str, user_id: str) -> bool:
         return result.scalar_one_or_none() is not None
 
 
-def format_history_for_prompt(messages: list) -> str:
+async def format_history_for_prompt(messages: list) -> str:
     if not messages:
         return ""
 
     recent_messages = messages[-MAX_HISTORY_MESSAGES:]
-    history_lines = []
-    for msg in recent_messages:
-        role = "用户" if msg["sender"] == "user" else "助手"
-        history_lines.append(f"{role}: {msg['content']}")
 
-    return "历史对话:\n" + "\n".join(history_lines)
+    if len(recent_messages) <= COMPRESS_THRESHOLD:
+        history_lines = []
+        for msg in recent_messages:
+            role = "用户" if msg["sender"] == "user" else "助手"
+            history_lines.append(f"{role}: {msg['content']}")
+        return "历史对话:\n" + "\n".join(history_lines)
+
+    early_messages = recent_messages[:-KEEP_RECENT]
+    recent_preserved = recent_messages[-KEEP_RECENT:]
+
+    lines = []
+    for msg in early_messages:
+        role = "用户" if msg["sender"] == "user" else "助手"
+        content = msg["content"][:150]
+        lines.append(f"{role}: {content}")
+    raw = "\n".join(lines)
+
+    from app.ai.llm import get_llm
+    llm = get_llm()
+    prompt = (
+        "请将以下对话压缩为 150 字以内的摘要，重点保留："
+        "用户的饮食偏好、忌口、喜欢的菜品、重要结论。"
+        "不要罗列对话流水，只输出核心信息。\n\n"
+        f"{raw}"
+    )
+    response = llm.invoke(prompt)
+    summary = response.content.strip()
+    print(f"[COMPRESS] {len(early_messages)} 条消息压缩为 {len(summary)} 字摘要")
+
+    result_lines = [f"对话摘要: {summary}"]
+    for msg in recent_preserved:
+        role = "用户" if msg["sender"] == "user" else "助手"
+        result_lines.append(f"{role}: {msg['content']}")
+
+    return "历史对话:\n" + "\n".join(result_lines)

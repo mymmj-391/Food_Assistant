@@ -8,14 +8,14 @@
 
 			<view v-else class="dish-grid">
 				<view
-					v-for="dish in dishList"
+					v-for="(dish, index) in dishList"
 					:key="dish.id"
 					class="dish-card"
 					@click="handleDishTap(dish)"
 				>
 					<view class="dish-cover">
 						<template v-if="dish.image">
-							<image class="dish-image" :src="dish.image" mode="aspectFill" @error="dish.image = ''"></image>
+							<image v-if="isVisible(index)" class="dish-image" :src="dish.image" mode="aspectFill" @error="dish.image = ''"></image>
 							<view class="dish-scrim"></view>
 							<view class="dish-meta">
 								<text class="dish-name">{{ dish.name }}</text>
@@ -29,8 +29,8 @@
 						</view>
 
 						<view class="star-btn" @click.stop="toggleFavorite(dish)">
-							<text class="star-icon" :class="{ 'star-active': dish.isFavorite }">★</text>
-						</view>
+						<text class="star-icon" :class="{ 'star-active': dish.isFavorite }">{{ dish.isFavorite ? '♥' : '♡' }}</text>
+					</view>
 					</view>
 
 					<view class="dish-summary">
@@ -51,13 +51,15 @@
 
 <script setup>
 	import { ref, nextTick } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
-import AppLayout from '../../components/AppLayout.vue'
-import CursorTrail from '../../components/CursorTrail.vue'
-import { getDishesByCategory } from '../../api/dish'
-import { addFavorite, removeFavorite, getFavorites } from '../../api/favorites'
-import { cleanSummary, summaryTag } from '../../utils/dishText'
+	import { onLoad } from '@dcloudio/uni-app'
+	import AppLayout from '../../components/AppLayout.vue'
+	import CursorTrail from '../../components/CursorTrail.vue'
+	import { getDishesByCategory } from '../../api/dish'
+	import { addFavorite, removeFavorite, getFavorites } from '../../api/favorites'
+	import { cleanSummary, summaryTag } from '../../utils/dishText'
+	import { useLazyLoad } from '../../utils/lazyLoad'
 
+	const { isVisible, observe } = useLazyLoad()
 	const layout = ref(null)
 	const categoryId = ref('')
 	const categoryName = ref('')
@@ -85,10 +87,11 @@ import { cleanSummary, summaryTag } from '../../utils/dishText'
 			const res = await getDishesByCategory(categoryId.value)
 			dishList.value = res.list || []
 			layout.value?.setHeader({
-			greeting: categoryName.value,
-			tip: `共 ${dishList.value.length} 道菜品`
-		})
-		checkFavorites()
+				greeting: categoryName.value,
+				tip: `共 ${dishList.value.length} 道菜品`
+			})
+			checkFavorites()
+			observe('.dish-scroll .dish-cover', dishList.value.length)
 		} catch (e) {
 			uni.showToast({
 				title: '加载失败，请检查网络',

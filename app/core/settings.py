@@ -16,9 +16,6 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 MILVUS_URI = os.getenv("MILVUS_URI", "http://localhost:19530")
 COLLECTION_NAME = "food_knowledge"
 
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "")
-WEATHER_API_URL = "https://devapi.qweather.com/v7/weather/now"
-WEATHER_CITY_URL = "https://geoapi.qweather.com/v2/city/lookup"
 AMAP_API_KEY = os.getenv("AMAP_API_KEY", "")
 AMAP_IP_URL = "https://restapi.amap.com/v3/ip"
 

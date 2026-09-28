@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 import json
 from app.schemas.chat import ChatRequest, ChatResponse
@@ -8,23 +8,41 @@ from app.services.chat_service import (
     save_message,
     get_session_history,
     session_belongs_to_user,
-    format_history_for_prompt,
 )
+from app.services.chat_service import format_history_for_prompt
 from app.dependencies import get_current_user, get_current_user_optional
+from app.core.context import set_client_ip
 
 router = APIRouter(prefix="/chat", tags=["聊天"])
+
+
+def extract_client_ip(request: Request) -> str:
+    """从请求头中提取用户真实 IP（兼容 nginx/ngrok 代理）"""
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        # X-Forwarded-For 格式: "client_ip, proxy1_ip, proxy2_ip"，第一个是原始客户端
+        return xff.split(",")[0].strip()
+    x_real_ip = request.headers.get("x-real-ip", "")
+    if x_real_ip:
+        return x_real_ip.strip()
+    if request.client:
+        return request.client.host
+    return ""
 
 
 @router.post("/ask", response_model=ChatResponse)
 async def chat_ask(
     request: ChatRequest,
+    http_request: Request,
     user=Depends(get_current_user_optional),
 ):
+    set_client_ip(extract_client_ip(http_request))
+
     user_id = user.username if user else "guest"
     session_id = await get_or_create_session(request.session_id, user_id)
 
     history = await get_session_history(session_id)
-    history_prompt = format_history_for_prompt(history)
+    history_prompt = await format_history_for_prompt(history)
 
     response = await rag_chat(
         query=request.query,
@@ -53,13 +71,16 @@ async def chat_history(
 @router.post("/stream")
 async def chat_stream(
     request: ChatRequest,
+    http_request: Request,
     user=Depends(get_current_user_optional),
 ):
+    set_client_ip(extract_client_ip(http_request))
+
     user_id = user.username if user else "guest"
     session_id = await get_or_create_session(request.session_id, user_id)
 
     history = await get_session_history(session_id)
-    history_prompt = format_history_for_prompt(history)
+    history_prompt = await format_history_for_prompt(history)
 
     await save_message(session_id, "user", request.query)
 

@@ -127,6 +127,192 @@ export const mdToHtml = (text) => {
 }
 
 /**
+ * 解析食材为结构化分类数据
+ * @param {string} raw - 原始 Markdown 全文
+ * @returns {{main: Array<{name: string, amount: string}>, seasoning: Array<{name: string, amount: string}>}}
+ */
+export const parseIngredients = (raw) => {
+	const sections = parseSections(raw)
+	let rawList = ''
+	let calcList = ''
+
+	for (const sec of sections) {
+		if (/必备原料|工具|食材/.test(sec.title)) {
+			rawList = sec.content
+		} else if (/计算/.test(sec.title)) {
+			calcList = sec.content
+		}
+	}
+
+	const calcMap = {}
+	if (calcList) {
+		const lines = calcList.split('\n')
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i]
+			const trimmed = line.trim()
+
+			// Table row: "| name | amount | ..."
+			if (/^\|.*\|$/.test(trimmed)) {
+				const cells = trimmed.split('|').filter(c => c.trim())
+				if (cells.length >= 2 && !/^[-:]+$/.test(cells[0].trim())) {
+					const name = cells[0].replace(/\*\*/g, '').trim()
+					const amount = cells[1].replace(/\*\*/g, '').trim()
+					if (name && amount) {
+						calcMap[name] = amount
+					}
+				}
+				continue
+			}
+
+			const cleaned = trimmed.replace(/^[\*\-\s]*/, '')
+			if (!cleaned || /^#/.test(cleaned)) continue
+
+			let name = null
+			let amount = null
+
+			// Pattern 1: "name = amount"
+			let m = cleaned.match(/^([^.。!！?？]+?)\s*=\s*[约大略近]*\s*(\d+.*)$/)
+			if (m) {
+				name = m[1].trim().replace(/\s*[=*]+\s*$/, '')
+				amount = m[2].trim()
+			}
+
+			// Pattern 2: "name amount"
+			if (!name) {
+				m = cleaned.match(/^([^.。!！?？]+?)\s+(\d+.*)$/)
+				if (m) {
+					name = m[1].trim()
+					amount = m[2].trim()
+				}
+			}
+
+			// Pattern 3: "amount name" (e.g., "10g 的干紫菜", "两个鸡蛋")
+			if (!name) {
+				m = cleaned.match(/^(\d+|两|一|二|三|四|五|六|七|八|九|十)\s*[\w\u4e00-\u9fff\.\/]*\s*[:：]?\s*的?(.+)$/)
+				if (m) {
+					amount = m[1].trim()
+					name = m[2].replace(/（[^）]*）/g, '').replace(/\([^)]*\)/g, '').trim()
+				}
+			}
+
+			if (name && amount && name.length >= 1 && name.length <= 25) {
+				calcMap[name] = amount
+			}
+		}
+	}
+
+	const mainKeywords = /肉|鱼|虾|蟹|鸡|鸭|鹅|蛋|豆腐|菜|瓜|薯|豆|面|米|饺|馒头|包|肠|丸|排|腿|翅|爪|胸|腰|肝|肚|肠|片|块|丝|丁|腩|藕|籽/
+		const seasoningKeywords = /盐|糖|酱|油|粉|醋|椒|蒜|姜|酒|精|粉|末|汁|水|蜜|油|抽|豉|豆/
+
+	const main = []
+	const seasoning = []
+	const tools = []
+	const covered = new Set()
+
+	const findAmount = (name) => {
+		if (calcMap[name]) return calcMap[name]
+		for (const key of Object.keys(calcMap)) {
+			if (key.includes(name) || name.includes(key)) {
+				return calcMap[key]
+			}
+		}
+		return ''
+	}
+
+	for (const line of rawList.split('\n')) {
+		const trimmedLine = line.trim()
+		if (!trimmedLine || /^#{1,3}\s+/.test(trimmedLine)) continue
+		const name = trimmedLine.replace(/^[\*\-\s]+/, '').trim()
+		if (!name) continue
+		covered.add(name)
+		const amount = findAmount(name)
+		const item = { name, amount }
+
+		if (/锅|刀|砧|板|烤箱|微波炉|蒸笼|模具|打蛋器|刮刀|筷子/.test(name)) {
+			tools.push(item)
+		} else if (seasoningKeywords.test(name)) {
+			seasoning.push(item)
+		} else if (mainKeywords.test(name)) {
+			main.push(item)
+		} else {
+			main.push(item)
+		}
+	}
+
+	for (const key of Object.keys(calcMap)) {
+		if (covered.has(key)) continue
+		const amount = calcMap[key]
+		const item = { name: key, amount }
+		if (/锅|刀|砧|板|烤箱|微波炉|蒸笼|模具|打蛋器|刮刀|筷子/.test(key)) {
+			tools.push(item)
+		} else if (seasoningKeywords.test(key)) {
+			seasoning.push(item)
+		} else if (mainKeywords.test(key)) {
+			main.push(item)
+		} else {
+			main.push(item)
+		}
+	}
+
+	const result = { main, seasoning }
+	if (tools.length) result.tools = tools
+	return result
+}
+
+/**
+ * 解析步骤为编号列表
+ * @param {string} raw - 原始 Markdown 全文
+ * @returns {Array<{text: string}>}
+ */
+export const parseSteps = (raw) => {
+	const sections = parseSections(raw)
+	let stepsText = ''
+	for (const sec of sections) {
+		if (/操作|步骤|做法/.test(sec.title)) {
+			stepsText = sec.content
+			break
+		}
+	}
+	if (!stepsText) return []
+
+	const lines = stepsText.replace(/\r\n/g, '\n').split('\n')
+	const steps = []
+	for (const line of lines) {
+		const m = line.trim().replace(/^[\*\-\s]/, '').match(/^\d+\.\s*(.+)$/) || line.trim().match(/^[\-\*]\s*(.+)$/)
+		if (m) {
+			const text = m[1] || m
+			if (text.trim()) steps.push({ text: text.trim() })
+		}
+	}
+	return steps
+}
+
+/**
+ * 解析贴士为字符串数组
+ * @param {string} raw - 原始 Markdown 全文
+ * @returns {Array<string>}
+ */
+export const parseTips = (raw) => {
+	const sections = parseSections(raw)
+	let tipsText = ''
+	for (const sec of sections) {
+		if (/附加|贴士|注意|小贴士/.test(sec.title)) {
+			tipsText = sec.content
+			break
+		}
+	}
+	if (!tipsText) return []
+
+	const lines = tipsText.replace(/\r\n/g, '\n').split('\n')
+	const tips = []
+	for (const line of lines) {
+		const trimmed = line.trim().replace(/^[\*\-\s]/, '').trim()
+		if (trimmed) tips.push(trimmed)
+	}
+	return tips
+}
+
+/**
  * 将章节内容转为结构化数据（用于步骤列表渲染）
  * @param {string} text - 章节 Markdown 文本
  * @returns {Array<{type: string, text: string}>}
