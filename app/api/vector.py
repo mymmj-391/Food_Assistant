@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
-from app.ai.knowledge import import_knowledge, search_knowledge, get_stats
-from app.dependencies import get_current_user
+from app.ai.ingestion import import_knowledge
+from app.ai.retrieval import search_knowledge, get_stats
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/vector", tags=["向量检索"])
 

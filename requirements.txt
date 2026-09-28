@@ -1,5 +1,4 @@
 fastapi==0.141.1
-flagembedding==1.4.2
 openai==3.8.0
 pydantic==2.13.5
 pymilvus==3.0.1

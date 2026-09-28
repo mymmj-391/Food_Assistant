@@ -26,9 +26,9 @@
 ```
 Food_Assistant/
 ├── app/                        # 后端核心
-│   ├── ai/                     # AI 模块 (LLM、嵌入、RAG、知识库)
+│   ├── ai/                     # AI 模块 (LLM、RAG、工具、检索/索引)
 │   ├── api/                    # API 路由层
-│   ├── core/                   # 配置、数据库、向量库
+│   ├── core/                   # 配置、数据库、向量库、嵌入、中间件
 │   ├── schemas/                # 数据模型
 │   ├── services/               # 业务逻辑
 │   └── models/                 # ORM 模型
@@ -41,8 +41,9 @@ Food_Assistant/
 ├── knowledge/                  # 知识库
 │   ├── dishes/                 # 菜品 (10 分类, 150+ 道菜)
 │   └── tips/                   # 厨房技巧
+├── scripts/                    # 运维脚本
+│   └── import_knowledge.py     # 知识库导入脚本
 ├── main.py                     # 入口文件
-├── import_knowledge.py         # 知识库导入脚本
 ├── docker-compose.yml          # Milvus 容器编排
 └── requirements.txt            # Python 依赖
 ```
@@ -74,10 +75,10 @@ docker-compose up -d
 
 ```bash
 # 增量导入（默认，MD5 去重）
-python import_knowledge.py
+python scripts/import_knowledge.py
 
 # 全量重建
-python import_knowledge.py --full-reload
+python scripts/import_knowledge.py --full-reload
 ```
 
 ### 4. 启动后端
@@ -126,10 +127,10 @@ npm run dev
 
 ```bash
 # 增量导入（自动跳过已存在内容）
-python import_knowledge.py
+python scripts/import_knowledge.py
 
 # 全量重建（删除旧数据重新导入）
-python import_knowledge.py --full-reload
+python scripts/import_knowledge.py --full-reload
 ```
 
 导入结果示例：

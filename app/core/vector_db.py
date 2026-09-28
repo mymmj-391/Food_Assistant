@@ -2,7 +2,7 @@ import hashlib
 from langchain_milvus import Milvus
 from pymilvus import MilvusClient, DataType
 from app.core.settings import MILVUS_URI, COLLECTION_NAME
-from app.ai.embeddings import get_embeddings
+from app.core.embeddings import get_embeddings
 
 _vector_store = None
 

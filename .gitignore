@@ -4,6 +4,7 @@ __pycache__/
 .env.production
 milvus_data/
 chroma_data/
+logs/
 models/
 .venv/
 venv/

@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import select, func
 from app.models.chat import ChatSessionModel, ChatMessageModel
 from app.core.database import async_session
+from app.core.middleware import mask_pii
 
 MAX_HISTORY_MESSAGES = 20
 COMPRESS_THRESHOLD = 12
@@ -29,6 +30,8 @@ async def get_or_create_session(session_id: str | None, user_id: str) -> str:
 
 
 async def save_message(session_id: str, sender: str, content: str):
+    if sender == "user":
+        content = mask_pii(content)
     async with async_session() as session:
         result = await session.execute(
             select(func.count()).select_from(ChatMessageModel).where(

@@ -9,7 +9,7 @@ from app.services.favorite_service import (
     get_diet_records,
     delete_diet_record,
 )
-from app.dependencies import get_current_user
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/favorites", tags=["收藏与饮食记录"])
 

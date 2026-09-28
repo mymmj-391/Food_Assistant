@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -18,6 +17,7 @@ from app.core.database import init_db, close_db
 from app.core.vector_db import get_or_create_collection, close_milvus
 from app.core.settings import DISHES_ROOT, TIPS_ROOT
 from app.api import api_router
+from app.api.system import root_router
 
 
 @asynccontextmanager
@@ -50,21 +50,13 @@ if Path(TIPS_ROOT).exists():
     print(f"已挂载技巧图片目录: {TIPS_ROOT}")
 
 app.include_router(api_router, prefix="/api")
+app.include_router(root_router)
 
 # 挂载前端静态文件（用于 3D 模型等）
 _frontend_static = Path(__file__).parent / "frontend" / "static"
 if _frontend_static.exists():
     app.mount("/static", StaticFiles(directory=str(_frontend_static)), name="frontend_static")
     print(f"已挂载前端静态目录: {_frontend_static}")
-
-
-@app.get("/")
-async def root():
-    return {
-        "message": "Food Assistant API",
-        "environment": os.getenv("ENV", "production"),
-        "debug": os.getenv("DEBUG", "false"),
-    }
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ router = APIRouter(prefix="/home", tags=["首页"])
 
 @router.get("/stats", response_model=dict)
 async def home_stats():
-    from app.ai.knowledge import get_stats
+    from app.ai.retrieval import get_stats
     from app.services.dish_service import get_category_list
 
     try:

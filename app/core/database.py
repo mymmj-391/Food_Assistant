@@ -32,6 +32,9 @@ async def _create_database_if_not_exists():
 
 
 async def init_db():
+    # 显式导入模型包，确保所有 ORM 模型注册到 Base.metadata 后再建表
+    import app.models  # noqa: F401
+
     await _create_database_if_not_exists()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

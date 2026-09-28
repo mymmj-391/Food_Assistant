@@ -10,7 +10,7 @@ from app.services.chat_service import (
     session_belongs_to_user,
 )
 from app.services.chat_service import format_history_for_prompt
-from app.dependencies import get_current_user, get_current_user_optional
+from app.api.deps import get_current_user, get_current_user_optional
 from app.core.context import set_client_ip
 
 router = APIRouter(prefix="/chat", tags=["聊天"])
@@ -48,6 +48,7 @@ async def chat_ask(
         query=request.query,
         top_k=request.top_k,
         history_prompt=history_prompt,
+        user_id=user_id,
     )
 
     await save_message(session_id, "user", request.query)
@@ -93,6 +94,7 @@ async def chat_stream(
             query=request.query,
             top_k=request.top_k,
             history_prompt=history_prompt,
+            user_id=user_id,
         ):
             if chunk["type"] == "content":
                 full_answer += chunk["content"]

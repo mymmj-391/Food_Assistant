@@ -7,7 +7,8 @@ import httpx
 from langchain_core.tools import tool
 from app.core.settings import AMAP_API_KEY, AMAP_IP_URL
 from app.core.context import get_client_ip
-from app.services.dish_service import get_dish_detail, get_category_list, CATEGORY_MAP
+from app.services.dish_service import get_dish_detail, get_category_list
+from app.core.constants import DISH_CATEGORY_MAP
 
 _tool_logger = logging.getLogger("tool_call")
 _tool_logger.setLevel(logging.INFO)
@@ -199,7 +200,7 @@ async def get_category_name(category_id: str) -> str:
     Args:
         category_id: 菜品分类ID，如'vegetable_dish'、'meat_dish'等
     """
-    name = CATEGORY_MAP.get(category_id, category_id)
+    name = DISH_CATEGORY_MAP.get(category_id, category_id)
     return json.dumps({"id": category_id, "name": name}, ensure_ascii=False)
 
 

@@ -1,18 +1,7 @@
 from pathlib import Path
 from app.core.settings import DISHES_ROOT, TIPS_ROOT, BASE_URL
+from app.core.constants import DISH_CATEGORY_MAP
 
-CATEGORY_MAP = {
-    "aquatic": "水产",
-    "breakfast": "早餐",
-    "condiment": "调味品",
-    "dessert": "甜品",
-    "drink": "饮品",
-    "meat_dish": "荤菜",
-    "semi-finished": "半成品",
-    "soup": "汤品",
-    "staple": "主食",
-    "vegetable_dish": "素菜",
-}
 
 def get_category_list() -> list:
     categories = []
@@ -24,7 +13,7 @@ def get_category_list() -> list:
     for item in sorted(dishes_path.iterdir()):
         if item.is_dir():
             category_id = item.name
-            category_name = CATEGORY_MAP.get(category_id, category_id)
+            category_name = DISH_CATEGORY_MAP.get(category_id, category_id)
             categories.append({
                 "id": category_id,
                 "name": category_name,

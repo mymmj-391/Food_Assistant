@@ -1,10 +1,15 @@
 import json
+import time
 import traceback
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
 from app.ai.llm import chat_with_tools
 from app.ai.tools import ALL_TOOLS, execute_tool
-from app.ai.knowledge import search_knowledge
+from app.ai.retrieval import search_knowledge
 from app.schemas.chat import ChatResponse, SourceInfo, DishLink
+from app.core.middleware import (
+    query_cache, make_cache_key,
+    enrich_prompt_context, quality_monitor,
+)
 
 SYSTEM_PROMPT = """你是一个专业的健康饮食助手，擅长根据用户的问题提供个性化的饮食建议。
 
@@ -84,33 +89,32 @@ def extract_dish_names(search_results: list) -> list:
     return dish_links
 
 
-MAX_HISTORY_MESSAGES = 20
-
-
-async def rag_chat(query: str, top_k: int = 5, history_prompt: str = "") -> ChatResponse:
+async def prepare_messages(query: str, top_k: int, history_prompt: str, user_id: str, tag: str):
+    """检索知识库并组装 LLM 消息，返回 (messages, sources, dish_links)"""
     try:
-        print(f"[RAG] 搜索知识库: query={query}, top_k={top_k}")
+        print(f"{tag} 搜索知识库: query={query}, top_k={top_k}")
         search_results = search_knowledge(query, top_k=top_k)
-        print(f"[RAG] 搜索完成: 找到 {len(search_results)} 条结果")
+        print(f"{tag} 搜索完成: 找到 {len(search_results)} 条结果")
     except Exception as e:
-        print(f"[RAG] 搜索知识库失败: {e}")
+        print(f"{tag} 搜索知识库失败: {e}")
         traceback.print_exc()
         search_results = []
 
     context = build_context(search_results)
-
     history_section = f"\n\n{history_prompt}" if history_prompt else ""
-
     dish_links = extract_dish_names(search_results)
 
-    # 构建可用菜品列表，方便AI调用工具时引用
     available_dishes = ""
     if dish_links:
         dish_list = ", ".join([f"{d.name}({d.category})" for d in dish_links[:5]])
         available_dishes = f"\n\n相关菜品: {dish_list}"
 
+    context_info = await enrich_prompt_context(user_id)
+
     user_content = f"""相关知识库内容:
 {context}{available_dishes}{history_section}
+
+系统上下文: {context_info}
 
 用户问题: {query}"""
 
@@ -129,6 +133,25 @@ async def rag_chat(query: str, top_k: int = 5, history_prompt: str = "") -> Chat
         )
         for r in search_results
     ]
+
+    return messages, sources, dish_links
+
+
+async def rag_chat(query: str, top_k: int = 5, history_prompt: str = "", user_id: str = "guest") -> ChatResponse:
+    start_time = time.time()
+
+    cache_key = make_cache_key(query, user_id)
+    cached = query_cache.get(cache_key)
+    if cached:
+        quality_monitor.record_response_time((time.time() - start_time) * 1000)
+        return ChatResponse(
+            session_id="",
+            answer=cached,
+            sources=[],
+            dish_links=[],
+        )
+
+    messages, sources, dish_links = await prepare_messages(query, top_k, history_prompt, user_id, "[RAG]")
 
     try:
         print("[RAG] 调用 LLM...")
@@ -154,19 +177,25 @@ async def rag_chat(query: str, top_k: int = 5, history_prompt: str = "") -> Chat
                     tc_args = tc.get("args") if isinstance(tc, dict) else tc.args
                     print(f"[RAG] 调用工具: {tc_name}, 参数: {tc_args}")
                     result = await execute_tool(tc_name, tc_args)
+                    quality_monitor.record_tool_call(tc_name, "error" not in result)
                     print(f"[RAG] 工具结果: {json.dumps(result, ensure_ascii=False)[:200]}")
                     messages.append(ToolMessage(
                         content=json.dumps(result, ensure_ascii=False),
                         tool_call_id=tc_id,
                     ))
             else:
+                answer = response.content or ""
+                duration_ms = (time.time() - start_time) * 1000
+                quality_monitor.record_response_time(duration_ms)
+                query_cache.put(cache_key, answer)
                 return ChatResponse(
                     session_id="",
-                    answer=response.content or "",
+                    answer=answer,
                     sources=sources,
                     dish_links=dish_links,
                 )
 
+        quality_monitor.record_response_time((time.time() - start_time) * 1000)
         return ChatResponse(
             session_id="",
             answer="抱歉，处理时间过长，请稍后再试。",
@@ -175,7 +204,9 @@ async def rag_chat(query: str, top_k: int = 5, history_prompt: str = "") -> Chat
         )
     except Exception as e:
         print(f"[RAG] LLM 调用失败: {e}")
+        quality_monitor.record_error("llm_error", str(e))
         traceback.print_exc()
+        quality_monitor.record_response_time((time.time() - start_time) * 1000)
         return ChatResponse(
             session_id="",
             answer=f"抱歉，AI 服务暂时不可用：{str(e)[:100]}",
@@ -184,45 +215,18 @@ async def rag_chat(query: str, top_k: int = 5, history_prompt: str = "") -> Chat
         )
 
 
-async def rag_chat_stream(query: str, top_k: int = 5, history_prompt: str = ""):
-    try:
-        print(f"[RAG Stream] 搜索知识库: query={query}, top_k={top_k}")
-        search_results = search_knowledge(query, top_k=top_k)
-        print(f"[RAG Stream] 搜索完成: 找到 {len(search_results)} 条结果")
-    except Exception as e:
-        print(f"[RAG Stream] 搜索知识库失败: {e}")
-        traceback.print_exc()
-        search_results = []
+async def rag_chat_stream(query: str, top_k: int = 5, history_prompt: str = "", user_id: str = "guest"):
+    start_time = time.time()
 
-    context = build_context(search_results)
-    history_section = f"\n\n{history_prompt}" if history_prompt else ""
-    dish_links = extract_dish_names(search_results)
+    cache_key = make_cache_key(query, user_id)
+    cached = query_cache.get(cache_key)
+    if cached:
+        quality_monitor.record_response_time((time.time() - start_time) * 1000)
+        yield {"type": "content", "content": cached}
+        yield {"type": "done", "sources": [], "dish_links": []}
+        return
 
-    available_dishes = ""
-    if dish_links:
-        dish_list = ", ".join([f"{d.name}({d.category})" for d in dish_links[:5]])
-        available_dishes = f"\n\n相关菜品: {dish_list}"
-
-    user_content = f"""相关知识库内容:
-{context}{available_dishes}{history_section}
-
-用户问题: {query}"""
-
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=user_content),
-    ]
-
-    sources = [
-        SourceInfo(
-            source=r.get("source", ""),
-            category=r.get("category", ""),
-            type=r.get("type", ""),
-            text=r.get("text", "")[:200],
-            distance=r.get("distance", 0),
-        )
-        for r in search_results
-    ]
+    messages, sources, dish_links = await prepare_messages(query, top_k, history_prompt, user_id, "[RAG Stream]")
 
     try:
         print("[RAG Stream] 调用 LLM...")
@@ -255,6 +259,7 @@ async def rag_chat_stream(query: str, top_k: int = 5, history_prompt: str = ""):
 
                     print(f"[RAG Stream] 调用工具: {tc_name}, 参数: {tc_args}")
                     result = await execute_tool(tc_name, tc_args)
+                    quality_monitor.record_tool_call(tc_name, "error" not in result)
                     print(f"[RAG Stream] 工具结果: {json.dumps(result, ensure_ascii=False)[:200]}")
                     messages.append(ToolMessage(
                         content=json.dumps(result, ensure_ascii=False),
@@ -265,11 +270,16 @@ async def rag_chat_stream(query: str, top_k: int = 5, history_prompt: str = ""):
                     if chunk.content:
                         yield {"type": "content", "content": chunk.content}
 
+                duration_ms = (time.time() - start_time) * 1000
+                quality_monitor.record_response_time(duration_ms)
                 yield {"type": "done", "sources": [s.model_dump() for s in sources], "dish_links": [d.model_dump() for d in dish_links]}
                 return
 
+        quality_monitor.record_response_time((time.time() - start_time) * 1000)
         yield {"type": "error", "content": "抱歉，处理时间过长，请稍后再试。"}
     except Exception as e:
         print(f"[RAG Stream] LLM 调用失败: {e}")
+        quality_monitor.record_error("llm_stream_error", str(e))
         traceback.print_exc()
+        quality_monitor.record_response_time((time.time() - start_time) * 1000)
         yield {"type": "error", "content": f"抱歉，AI 服务暂时不可用：{str(e)[:100]}"}
